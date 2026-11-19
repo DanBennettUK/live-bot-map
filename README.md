@@ -2,10 +2,8 @@
 
 A dark, animated map of every Grok Bot [Dan Bennett](https://danbennett.me) runs. Bots appear as glowing nodes grouped by role. Nodes pulse if they were active in the last 10 minutes, glow if they were active in the last 24 hours, and dim otherwise. There is a live activity ticker, search, cluster filters, and a card list view.
 
-Live pages:
+Live site: https://live-bot-map-sand.vercel.app
 
-- GitHub Pages: https://danbennettuk.github.io/live-bot-map/
-- Vercel: https://live-bot-map-sand.vercel.app
 
 ## How the feed works
 
