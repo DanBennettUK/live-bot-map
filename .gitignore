@@ -10,3 +10,5 @@ screenshot.png
 screenshot-mobile.png
 screenshot-840x520.png
 screenshot-dan.png
+.wrangler/
+node_modules/

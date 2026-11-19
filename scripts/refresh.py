@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate status.json from bot profiles + message timestamps, and publish it to Vercel Blob.
+"""Generate status.json from bot profiles + message timestamps, and publish it to Vercel Blob and, when configured, Cloudflare Workers.
 
 Reads ONLY message timestamps, role, in_main_chat, and agent_id from the search index.
 Never reads or writes message text, prompts, URLs, command args, emails or secrets.
@@ -670,6 +670,21 @@ def read_token() -> str | None:
     return None
 
 
+def read_cf_token() -> str | None:
+    token = (os.environ.get("LBM_CF_PUBLISH_TOKEN") or "").strip()
+    if token:
+        return token
+    path = ROOT / ".secrets" / "cf-publish-token"
+    if path.exists():
+        return path.read_text().strip() or None
+    return None
+
+
+def cf_status_url() -> str | None:
+    url = (os.environ.get("LBM_CF_STATUS_URL") or "").strip()
+    return url or None
+
+
 def extract_feed_url_from_config() -> str | None:
     if not CONFIG_PATH.exists():
         return None
@@ -679,8 +694,14 @@ def extract_feed_url_from_config() -> str | None:
 
 
 def write_config(feed_url: str) -> None:
+    """Keep the Blob URL in config.js, but never rewrite a host-aware file."""
+    if not CONFIG_PATH.exists():
+        return
+    text = CONFIG_PATH.read_text()
+    if "location.hostname" in text or "LIVE_BOT_MAP.feedUrl" in text:
+        return
     existing = extract_feed_url_from_config()
-    if existing == feed_url and CONFIG_PATH.exists():
+    if existing == feed_url:
         return
     CONFIG_PATH.write_text(
         "window.LIVE_BOT_MAP = {\n"
@@ -720,6 +741,27 @@ def upload_blob(payload: dict, token: str) -> str:
     return feed_url
 
 
+def upload_cloudflare(payload: dict, token: str, url: str) -> None:
+    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="PUT",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+            # workers.dev blocks Python's default urllib User-Agent (error 1010)
+            "User-Agent": "LiveBotMap-Refresher/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"cloudflare upload failed: HTTP {exc.code} {detail[:300]}") from exc
+
+
 def publish(payload: dict, force: bool = False) -> dict:
     digest = fingerprint(payload)
     state = load_state()
@@ -733,7 +775,14 @@ def publish(payload: dict, force: bool = False) -> dict:
             last_pub_ts = 0
     age = time.time() - last_pub_ts
     changed = digest != last_hash
-    should = force or changed or age >= FORCE_PUBLISH_SEC or not state.get("feedUrl")
+    cf_ready = bool(read_cf_token() and cf_status_url())
+    should = (
+        force
+        or changed
+        or age >= FORCE_PUBLISH_SEC
+        or not state.get("feedUrl")
+        or (cf_ready and not state.get("cfPublished"))
+    )
 
     LOCAL_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     LOCAL_STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
@@ -742,27 +791,62 @@ def publish(payload: dict, force: bool = False) -> dict:
         print(f"unchanged, skipping upload ({int(age)}s since last publish)")
         return state
 
-    token = read_token()
-    if not token:
-        print("no blob token yet; wrote local status only", file=sys.stderr)
+    blob_token = read_token()
+    cf_token = read_cf_token()
+    cf_url = cf_status_url()
+    if not blob_token and not (cf_token and cf_url):
+        print("no publish target yet; wrote local status only", file=sys.stderr)
         state.update({"hash": digest, "generatedAt": payload["generatedAt"], "skippedReason": "no-token"})
         save_state(state)
         return state
 
-    feed_url = upload_blob(payload, token)
-    write_config(feed_url)
+    errors: list[str] = []
+    feed_url = state.get("feedUrl")
+    blob_ok = False
+    if blob_token:
+        try:
+            feed_url = upload_blob(payload, blob_token)
+            write_config(feed_url)
+            blob_ok = True
+        except Exception as exc:
+            errors.append(f"blob: {exc}")
+            print(f"blob upload failed: {exc}", file=sys.stderr)
+
+    cf_ok = False
+    if cf_token and cf_url:
+        try:
+            upload_cloudflare(payload, cf_token, cf_url)
+            cf_ok = True
+        except Exception as exc:
+            errors.append(f"cloudflare: {exc}")
+            print(f"cloudflare upload failed: {exc}", file=sys.stderr)
+
+    if not blob_ok and not cf_ok:
+        raise RuntimeError("; ".join(errors) or "publish failed")
+
     state = {
         "hash": digest,
         "publishedAt": payload["generatedAt"],
         "generatedAt": payload["generatedAt"],
         "feedUrl": feed_url,
+        "cfUrl": cf_url if cf_ok else state.get("cfUrl"),
+        "cfPublished": cf_ok,
         "bots": len(payload["bots"]),
         "clusters": len(payload["clusters"]),
         "forced": (not changed) and age >= FORCE_PUBLISH_SEC,
     }
+    if errors:
+        state["publishErrors"] = errors
     save_state(state)
     kind = "forced refresh" if state["forced"] else ("first publish" if last_hash is None else "updated")
-    print(f"{kind}: {len(payload['bots'])} bots, {len(payload['clusters'])} clusters, {feed_url}")
+    dests = []
+    if feed_url:
+        dests.append(feed_url)
+    if cf_ok and cf_url:
+        dests.append(cf_url)
+    print(f"{kind}: {len(payload['bots'])} bots, {len(payload['clusters'])} clusters, {' + '.join(dests)}")
+    if errors:
+        print("partial publish: " + "; ".join(errors), file=sys.stderr)
     return state
 
 

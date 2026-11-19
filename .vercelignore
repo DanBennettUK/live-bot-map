@@ -8,3 +8,11 @@ screenshot.png
 .vercel
 __pycache__
 *.pyc
+worker
+wrangler.jsonc
+.assetsignore
+_headers
+node_modules
+package.json
+package-lock.json
+public
