@@ -97,6 +97,10 @@
     return String((bot && bot.title) || "").trim();
   }
 
+  function isHermes(bot) {
+    return String((bot && bot.platform) || "").trim().toLowerCase() === "hermes";
+  }
+
   function captionLines(bot) {
     const title = botTitle(bot);
     const doing = (bot.doingNow || "").trim();
@@ -224,7 +228,7 @@
     const inCluster = state.cluster === "all" || bot.clusterId === state.cluster;
     if (!inCluster) return false;
     if (!q) return true;
-    const hay = `${bot.name} ${bot.title || ""} ${bot.role} ${bot.cluster} ${bot.doingNow}`.toLowerCase();
+    const hay = `${bot.name} ${bot.title || ""} ${bot.role} ${bot.cluster} ${bot.doingNow} ${bot.platform || ""}`.toLowerCase();
     return hay.includes(q);
   }
 
@@ -276,32 +280,79 @@
 
   function applyCamera() {
     const world = $("world");
-    if (!world) return;
-    const { x, y, scale } = state.camera;
-    const tx = 640 - x * scale;
-    const ty = 400 - y * scale;
-    world.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
+    if (world) world.removeAttribute("transform");
   }
 
-  function zoomTo(bots, padding = 160) {
-    if (!bots.length) {
-      state.camera = { x: 640, y: 400, scale: 1 };
+  function fitView(bots) {
+    const svg = $("map");
+    if (!svg) return;
+    const list = bots && bots.length ? bots : [];
+    const clusters = (state.feed && state.feed.clusters) || [];
+    if (!list.length) {
+      svg.setAttribute("viewBox", "0 0 1280 800");
       applyCamera();
       return;
     }
+    const pad = 40;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const b of bots) {
-      const r = nodeRadius(b.events24h) + 24;
-      minX = Math.min(minX, b.x - r);
-      maxX = Math.max(maxX, b.x + r);
-      minY = Math.min(minY, b.y - r);
-      maxY = Math.max(maxY, b.y + r);
+    const shown = new Set(list.map((b) => b.clusterId));
+    for (const bot of list) {
+      const r = nodeRadius(bot.events24h);
+      const name = shortName(bot.name);
+      const lines = captionLines(bot);
+      const nameW = textWidth(name, 12);
+      const subW = Math.max(0, ...lines.map((line) => textWidth(line, 9)));
+      const half = Math.max(nameW, subW, r * 2.2) / 2;
+      minX = Math.min(minX, bot.x - half, bot.x - r * 2.1);
+      maxX = Math.max(maxX, bot.x + half, bot.x + r * 2.1);
+      minY = Math.min(minY, bot.y - Math.max(r * 2.1, 22));
+      maxY = Math.max(maxY, bot.y + r + 14 + 12 + lines.length * 11);
     }
-    const w = Math.max(200, maxX - minX + padding * 2);
-    const h = Math.max(160, maxY - minY + padding * 2);
-    const scale = Math.max(1, Math.min(2.15, 1280 / w, 800 / h));
-    state.camera = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, scale };
+    const world = $("world");
+    if (world) {
+      for (const label of world.querySelectorAll(".cluster-label")) {
+        const group = label.closest("[data-cluster]");
+        const id = group && group.getAttribute("data-cluster");
+        if (id && !shown.has(id)) continue;
+        try {
+          const bb = label.getBBox();
+          minX = Math.min(minX, bb.x);
+          maxX = Math.max(maxX, bb.x + bb.width);
+          minY = Math.min(minY, bb.y);
+          maxY = Math.max(maxY, bb.y + bb.height);
+        } catch (err) {
+          /* getBBox can fail before layout */
+        }
+      }
+    }
+    for (const c of clusters) {
+      if (!shown.has(c.id)) continue;
+      const lw = textWidth((c.name || "").toUpperCase(), 10, 1.6);
+      minX = Math.min(minX, c.hub.x - Math.max(28, lw / 2));
+      maxX = Math.max(maxX, c.hub.x + Math.max(28, lw / 2));
+      minY = Math.min(minY, c.hub.y - 48);
+      maxY = Math.max(maxY, c.hub.y + 28);
+    }
+    const w = Math.max(220, maxX - minX + pad * 2);
+    const h = Math.max(180, maxY - minY + pad * 2);
+    const x = minX - pad;
+    const y = minY - pad;
+    svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`);
     applyCamera();
+    state.camera = { x: x + w / 2, y: y + h / 2, scale: 1 };
+    const rect = svg.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const scale = Math.min(rect.width / w, rect.height / h);
+    const compact = scale < 0.72 || rect.height < 430 || rect.width < 520;
+    svg.classList.toggle("is-compact", compact);
+    svg.style.setProperty("--label-size", `${Math.min(26, Math.max(12, 10.8 / scale))}px`);
+    svg.style.setProperty("--title-size", `${Math.min(18, Math.max(9, 9.5 / scale))}px`);
+    svg.style.setProperty("--cluster-size", `${Math.min(16, Math.max(9, 9.5 / scale))}px`);
+    svg.style.setProperty("--pill-size", `${Math.min(12, Math.max(6.5, 7 / scale))}px`);
+  }
+
+  function zoomTo(bots) {
+    fitView(bots && bots.length ? bots : ((state.feed && state.feed.bots) || []));
   }
 
   function renderMap(feed, prev) {
@@ -396,6 +447,12 @@
         cx: bot.x, cy: bot.y, r: Math.max(3, r * 0.28),
         fill: color,
       }));
+      if (isHermes(bot)) {
+        g.appendChild(svgEl("circle", {
+          class: "hermes-ring",
+          cx: bot.x, cy: bot.y, r: r + 5,
+        }));
+      }
       const name = svgEl("text", { class: "bot-label", x: bot.x, y: bot.y + r + 14 });
       name.textContent = shortName(bot.name);
       g.appendChild(name);
@@ -427,13 +484,8 @@
     }
 
     applyFiltersToMap();
-    if (state.cluster !== "all" || state.query.trim()) {
-      const vis = visibleBots(feed);
-      zoomTo(vis.length ? vis : feed.bots);
-    } else {
-      state.camera = { x: 640, y: 400, scale: 1 };
-      applyCamera();
-    }
+    const vis = visibleBots(feed);
+    zoomTo(vis.length ? vis : feed.bots);
   }
 
   function applyFiltersToMap() {
@@ -461,7 +513,10 @@
     detail.style.setProperty("--swatch", color);
     detail.innerHTML = `
       <button class="close" type="button" aria-label="Close">×</button>
-      <h2>${escapeHtml(shortName(bot.name))}</h2>
+      <div class="detail-head">
+        <h2>${escapeHtml(shortName(bot.name))}</h2>
+        ${isHermes(bot) ? `<span class="platform-pill">Hermes</span>` : ""}
+      </div>
       ${botTitle(bot) ? `<div class="bot-title">${escapeHtml(botTitle(bot))}</div>` : ""}
       <div class="cluster-line">${escapeHtml(bot.cluster)}</div>
       <p class="role">${escapeHtml(bot.role)}</p>
@@ -502,7 +557,10 @@
       if (!matches(bot)) card.classList.add("is-hidden");
       card.innerHTML = `
         <div class="cluster-line">${escapeHtml(bot.cluster)}</div>
-        <h2>${escapeHtml(shortName(bot.name))}</h2>
+        <div class="card-head">
+          <h2>${escapeHtml(shortName(bot.name))}</h2>
+          ${isHermes(bot) ? `<span class="platform-pill">Hermes</span>` : ""}
+        </div>
         ${botTitle(bot) ? `<p class="bot-title">${escapeHtml(botTitle(bot))}</p>` : ""}
         <p class="role">${escapeHtml(bot.role)}</p>
         <div class="meta">
@@ -533,6 +591,13 @@
         onFilterChange();
       });
       root.appendChild(btn);
+    }
+    if (feed.bots.some(isHermes)) {
+      const legend = document.createElement("span");
+      legend.className = "legend-hermes";
+      legend.setAttribute("aria-label", "Hermes marks agents on the Hermes platform");
+      legend.innerHTML = `<span class="platform-pill">Hermes</span>`;
+      root.appendChild(legend);
     }
   }
 
@@ -600,12 +665,7 @@
     if (VIEW === "map") {
       applyFiltersToMap();
       const vis = visibleBots();
-      if (state.cluster === "all" && !state.query) {
-        state.camera = { x: 640, y: 400, scale: 1 };
-        applyCamera();
-      } else {
-        zoomTo(vis.length ? vis : state.feed.bots);
-      }
+      zoomTo(vis.length ? vis : state.feed.bots);
     } else {
       renderList(state.feed);
     }
@@ -677,6 +737,15 @@
       });
     }
     setInterval(renderBadge, 1000);
+    let fitTimer = 0;
+    window.addEventListener("resize", () => {
+      clearTimeout(fitTimer);
+      fitTimer = setTimeout(() => {
+        if (VIEW !== "map" || !state.feed) return;
+        const vis = visibleBots();
+        zoomTo(vis.length ? vis : state.feed.bots);
+      }, 80);
+    });
   }
 
   async function start() {

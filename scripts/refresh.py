@@ -149,6 +149,8 @@ def _banned_terms() -> list[str]:
 
 
 def sanitise_public_text(text: str) -> str:
+    # Roles and titles only. Do not pass the platform field through this.
+
     """Strip URLs, emails, ids, and any locally configured blocklist terms."""
     text = text or ""
     text = MD_LINK_RE.sub(r"\1", text)
@@ -503,6 +505,7 @@ def attach_work_fleet_bots(
             "clusterId": work["id"],
             "title": resolve_title(display, slot),
             "role": role,
+            "platform": "hermes",
             "color": resolve_avatar_color(slot.get("color"), work["id"]),
             "lastActive": last_iso,
             "events24h": int(act.get("events24h") or 0),
@@ -575,6 +578,7 @@ def build_status() -> dict:
             "clusterId": cluster["id"],
             "title": resolve_title(profile["name"], slot),
             "role": override or profile["role"],
+            "platform": "grok",
             "color": resolve_avatar_color(profile.get("avatarColor"), cluster["id"]),
             "lastActive": iso(from_ms(act["last_ms"])) if act["last_ms"] else None,
             "events24h": act["events24h"],
