@@ -1,0 +1,10 @@
+.secrets
+logs
+scripts
+README.md
+clusters.json
+screenshot.png
+.gitignore
+.vercel
+__pycache__
+*.pyc

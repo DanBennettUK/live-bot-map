@@ -1,0 +1,9 @@
+.secrets/
+logs/
+.vercel/
+__pycache__/
+*.pyc
+.DS_Store
+refresh-state.json
+status.json
+screenshot.png

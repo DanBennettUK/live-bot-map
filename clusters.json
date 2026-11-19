@@ -1,0 +1,148 @@
+{
+  "clusters": [
+    {
+      "id": "front-door",
+      "name": "Front door",
+      "color": "#f3a05a",
+      "hub": {
+        "x": 640,
+        "y": 400
+      },
+      "bots": [
+        {
+          "match": "Mew",
+          "x": 640,
+          "y": 418
+        }
+      ]
+    },
+    {
+      "id": "building-and-fleet-care",
+      "name": "Building and fleet care",
+      "color": "#5cc8ff",
+      "hub": {
+        "x": 220,
+        "y": 285
+      },
+      "bots": [
+        {
+          "match": "Machamp",
+          "x": 128,
+          "y": 235
+        },
+        {
+          "match": "Exeggutor",
+          "x": 322,
+          "y": 220,
+          "role": "Exeggutor designs Dan Bennett's bots and looks after the fleet."
+        },
+        {
+          "match": "tinkabot",
+          "x": 248,
+          "y": 360
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "name": "Work",
+      "color": "#b892ff",
+      "hub": {
+        "x": 640,
+        "y": 200
+      },
+      "bots": [
+        {
+          "match": "Ditto",
+          "x": 640,
+          "y": 220,
+          "role": "Ditto is Dan Bennett's work helper."
+        }
+      ]
+    },
+    {
+      "id": "money",
+      "name": "Money",
+      "color": "#f4d35e",
+      "hub": {
+        "x": 250,
+        "y": 620
+      },
+      "bots": [
+        {
+          "match": "Meowth",
+          "x": 150,
+          "y": 595
+        },
+        {
+          "match": "Chansey",
+          "x": 350,
+          "y": 660
+        }
+      ]
+    },
+    {
+      "id": "career",
+      "name": "Career",
+      "color": "#7ed0b6",
+      "hub": {
+        "x": 640,
+        "y": 655
+      },
+      "bots": [
+        {
+          "match": "Noctowl",
+          "x": 640,
+          "y": 675
+        }
+      ]
+    },
+    {
+      "id": "social-and-streaming",
+      "name": "Social and streaming",
+      "color": "#ff7ad9",
+      "hub": {
+        "x": 1060,
+        "y": 285
+      },
+      "bots": [
+        {
+          "match": "Jigglypuff",
+          "x": 968,
+          "y": 235
+        },
+        {
+          "match": "Pikachu",
+          "x": 1150,
+          "y": 335
+        }
+      ]
+    },
+    {
+      "id": "map-itself",
+      "name": "Map itself",
+      "color": "#7af0c8",
+      "hub": {
+        "x": 1060,
+        "y": 620
+      },
+      "bots": [
+        {
+          "match": "Live Bot Map",
+          "x": 1060,
+          "y": 640
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "color": "#8b93a7",
+      "hub": {
+        "x": 640,
+        "y": 820
+      },
+      "bots": []
+    }
+  ]
+}
