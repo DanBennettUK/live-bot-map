@@ -38,6 +38,9 @@
     violet: "#a78bfa",
     magenta: "#f472c8",
     brown: "#d4a574",
+    cyan: "#5ee4f0",
+    pink: "#ff8ab4",
+    teal: "#b7e0c9",
   };
 
   function botHex(bot) {

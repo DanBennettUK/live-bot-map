@@ -32,6 +32,8 @@ Paths and optional extra stripping are configured with environment variables, no
 - `LBM_BANNED_TERMS` — optional comma-separated extra terms to strip from public role text
 - `LBM_BANNED_TERMS_FILE` — optional blocklist file, one term per line (defaults to `.secrets/banned-terms.txt`)
 - `BLOB_READ_WRITE_TOKEN` — write token for the blob store, or a gitignored `.secrets/blob-token` file
+- `LBM_WORK_EXPORT_HOST` — optional SSH host alias for a read-only work-fleet activity export
+- `LBM_WORK_EXPORT_CMD` — optional remote command that prints JSON counts only
 
 If no blocklist file or `LBM_BANNED_TERMS` is set, the refresher still strips emails, URLs and ids from public strings.
 

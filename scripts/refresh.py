@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import time
 import urllib.error
@@ -68,6 +69,7 @@ SECRETS_PATH = ROOT / ".secrets" / "blob-token"
 BANNED_TERMS_PATH = _path_from_env("LBM_BANNED_TERMS_FILE") or (ROOT / ".secrets" / "banned-terms.txt")
 STATE_PATH = ROOT / "logs" / "refresh-state.json"
 LOCAL_STATUS_PATH = ROOT / "logs" / "status.json"
+WORK_CACHE_PATH = ROOT / "logs" / "work-export-cache.json"
 CONFIG_PATH = ROOT / "config.js"
 
 IDLE_AFTER_SEC = 10 * 60
@@ -76,6 +78,8 @@ GLOW_SEC = 24 * 60 * 60
 FORCE_PUBLISH_SEC = 10 * 60
 LOOP_SEC = 90
 TICKER_LIMIT = 30
+WORK_CACHE_SEC = 5 * 60
+WORK_SSH_TIMEOUT = 12
 
 EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.\w+\b")
 URL_RE = re.compile(r"(https?://\S+|www\.\S+)", re.I)
@@ -95,7 +99,7 @@ def from_ms(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
 
-KNOWN_COLORS = ("red", "green", "blue", "yellow", "orange", "magenta", "violet", "brown")
+KNOWN_COLORS = ("red", "green", "blue", "yellow", "orange", "magenta", "violet", "brown", "cyan", "pink", "teal")
 CLUSTER_FALLBACK_COLOR = {
     "front-door": "orange",
     "building-and-fleet-care": "blue",
@@ -105,6 +109,17 @@ CLUSTER_FALLBACK_COLOR = {
     "social-and-streaming": "magenta",
     "map-itself": "magenta",
     "other": "blue",
+}
+
+# Keys as reported by the optional work-fleet export, mapped to public display names.
+WORK_EXPORT_KEYS = {
+    "eevee": "Eevee",
+    "kssm": "Umbreon",
+    "reports": "Glaceon",
+    "campaigns": "Sylveon",
+    "scout": "Espeon",
+    "partnerdesk": "Leafeon",
+    "smeargle-designer": "Smeargle",
 }
 
 def _banned_terms() -> list[str]:
@@ -333,6 +348,153 @@ def load_activity(agent_ids: list[str]) -> dict[str, dict]:
     return out
 
 
+
+def load_work_cache() -> dict:
+    if not WORK_CACHE_PATH.exists():
+        return {}
+    try:
+        data = json.loads(WORK_CACHE_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_work_cache(cache: dict) -> None:
+    WORK_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    WORK_CACHE_PATH.write_text(json.dumps(cache, indent=2) + "\n")
+
+
+def parse_work_export(raw: str) -> dict[str, dict]:
+    """Keep only numeric activity fields for known keys. Drop everything else."""
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("work export is not an object")
+    out: dict[str, dict] = {}
+    for key in WORK_EXPORT_KEYS:
+        item = data.get(key)
+        if not isinstance(item, dict):
+            continue
+        last = item.get("lastActive")
+        last_ts = None
+        if isinstance(last, (int, float)) and last > 0:
+            last_ts = float(last)
+        elif isinstance(last, str) and last.strip():
+            try:
+                last_ts = datetime.strptime(last.strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+            except ValueError:
+                last_ts = None
+        try:
+            events = max(0, int(item.get("events24h") or 0))
+        except (TypeError, ValueError):
+            events = 0
+        active = item.get("activeRecent")
+        if not isinstance(active, bool):
+            active = bool(last_ts is not None and (time.time() - last_ts) <= IDLE_AFTER_SEC)
+        out[key] = {"lastActive": last_ts, "events24h": events, "activeRecent": active}
+    return out
+
+
+def fetch_work_export() -> dict[str, dict]:
+    """Return cached or freshly fetched work-fleet activity. SSH failures keep last values."""
+    cache = load_work_cache()
+    bots = cache.get("bots") if isinstance(cache.get("bots"), dict) else {}
+    fetched_at = cache.get("fetchedAt")
+    try:
+        fetched_at = float(fetched_at)
+    except (TypeError, ValueError):
+        fetched_at = 0.0
+    host = (os.environ.get("LBM_WORK_EXPORT_HOST") or "").strip()
+    cmd = (os.environ.get("LBM_WORK_EXPORT_CMD") or "").strip()
+    if not host or not cmd:
+        return bots
+    if bots and fetched_at and (time.time() - fetched_at) < WORK_CACHE_SEC:
+        return bots
+    timeout = WORK_SSH_TIMEOUT
+    raw_timeout = (os.environ.get("LBM_WORK_EXPORT_TIMEOUT") or "").strip()
+    if raw_timeout:
+        try:
+            timeout = max(2, int(raw_timeout))
+        except ValueError:
+            pass
+    try:
+        proc = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={min(8, timeout)}", host, cmd],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (subprocess.SubprocessError, OSError):
+        print("work export: ssh failed; keeping last values", file=sys.stderr, flush=True)
+        return bots
+    if proc.returncode != 0:
+        print("work export: ssh failed; keeping last values", file=sys.stderr, flush=True)
+        return bots
+    try:
+        fresh = parse_work_export(proc.stdout)
+    except (ValueError, json.JSONDecodeError):
+        print("work export: invalid payload; keeping last values", file=sys.stderr, flush=True)
+        return bots
+    merged = dict(bots)
+    merged.update(fresh)
+    save_work_cache({"fetchedAt": time.time(), "bots": merged})
+    return merged
+
+
+def doing_now_work(act: dict, now_ts: float) -> str:
+    if act.get("activeRecent"):
+        return "Working"
+    last = act.get("lastActive")
+    if last is not None and (now_ts - last) <= IDLE_AFTER_SEC:
+        return "Working"
+    return "Idle"
+
+
+def attach_work_fleet_bots(
+    bots_out: list[dict],
+    used_clusters: dict[str, dict],
+    used_slugs: set[str],
+    clusters_cfg: list[dict],
+    now: datetime,
+) -> None:
+    """Add the work-fleet bots from clusters.json + the optional export."""
+    work = next((c for c in clusters_cfg if c["id"] == "work"), None)
+    if work is None:
+        return
+    export = fetch_work_export()
+    slots = {name_key(slot["match"]): slot for slot in work.get("bots", [])}
+    already = {name_key(bot["name"]) for bot in bots_out}
+    now_ts = now.timestamp()
+    if "work" not in used_clusters:
+        used_clusters["work"] = {
+            "id": work["id"],
+            "name": work["name"],
+            "color": work["color"],
+            "hub": {"x": work["hub"]["x"], "y": work["hub"]["y"]},
+        }
+    for key, display in WORK_EXPORT_KEYS.items():
+        if name_key(display) in already:
+            continue
+        slot = slots.get(name_key(display), {})
+        act = export.get(key) or {}
+        last = act.get("lastActive")
+        last_iso = iso(datetime.fromtimestamp(last, tz=timezone.utc)) if last else None
+        role = sanitise_public_text(slot.get("role") or "")
+        bot = {
+            "id": unique_slug(display, used_slugs),
+            "name": display,
+            "cluster": work["name"],
+            "clusterId": work["id"],
+            "role": role,
+            "color": resolve_avatar_color(slot.get("color"), work["id"]),
+            "lastActive": last_iso,
+            "events24h": int(act.get("events24h") or 0),
+            "doingNow": doing_now_work(act, now_ts),
+            "x": slot.get("x"),
+            "y": slot.get("y"),
+        }
+        bots_out.append(bot)
+        already.add(name_key(display))
+
 def doing_now(act: dict, now_ms: int) -> str:
     last = act["last_ms"]
     if last is None or (now_ms - last) > IDLE_AFTER_SEC * 1000:
@@ -411,6 +573,14 @@ def build_status() -> dict:
                 "color": cluster["color"],
                 "hub": {"x": cluster["hub"]["x"], "y": cluster["hub"]["y"]},
             }
+
+    before = {id(b) for b in bots_out}
+    attach_work_fleet_bots(bots_out, used_clusters, used_slugs, clusters_cfg, now)
+    for bot in bots_out:
+        if id(bot) in before:
+            continue
+        if bot.get("x") is None or bot.get("y") is None:
+            unplaced_by_cluster.setdefault(bot["clusterId"], []).append(bot)
 
     for cid, group in unplaced_by_cluster.items():
         cluster = used_clusters[cid]
