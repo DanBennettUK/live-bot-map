@@ -19,20 +19,26 @@ Optional role overrides live next to each bot in `clusters.json`.
 
 The public feed and this site do not include message content, prompts, command arguments, emails, secrets, or internal bot ids. Roles are short and edited so they don't name employers, private hosts, or other internal systems. The pages are served with a noindex robots policy.
 
-## Restart the refresher
+## Running the refresher
+
+`scripts/start-refresher.sh` starts the loop. It sources a gitignored local env file if present (`.secrets/refresher.env`, or the path in `LBM_ENV_FILE`). The script itself also loads that file, so a one-off `python3 scripts/refresh.py --force` works from the repo root.
+
+Paths and optional extra stripping are configured with environment variables, not hardcoded locations:
+
+- `LBM_ROOT` — checkout directory (defaults to the repository root, next to `scripts/`)
+- `LBM_AGENTS_DIR` — directory of bot profile folders
+- `LBM_INDEX_DB` — SQLite activity index (timestamps and sender type only)
+- `LBM_DELETED_AGENTS` — optional JSON list of deleted bot ids (defaults to `deleted-agents.json` beside `LBM_AGENTS_DIR`)
+- `LBM_BANNED_TERMS` — optional comma-separated extra terms to strip from public role text
+- `LBM_BANNED_TERMS_FILE` — optional blocklist file, one term per line (defaults to `.secrets/banned-terms.txt`)
+- `BLOB_READ_WRITE_TOKEN` — write token for the blob store, or a gitignored `.secrets/blob-token` file
+
+If no blocklist file or `LBM_BANNED_TERMS` is set, the refresher still strips emails, URLs and ids from public strings.
 
 ```bash
-mkdir -p /workspace/live-bot-map/logs
-setsid nohup env PYTHONUNBUFFERED=1 python3 /workspace/live-bot-map/scripts/refresh.py --loop >> /workspace/live-bot-map/logs/refresher.log 2>&1 < /dev/null &
-echo $! > /workspace/live-bot-map/logs/refresher.pid
+./scripts/start-refresher.sh
 ```
 
-Or run `/workspace/live-bot-map/scripts/start-refresher.sh`.
-
-The write token for the blob store is read from the `BLOB_READ_WRITE_TOKEN` environment variable, or from a local `.secrets/blob-token` file that is not in this repository.
-
-A one-off publish:
-
 ```bash
-python3 /workspace/live-bot-map/scripts/refresh.py --force
+python3 scripts/refresh.py --force
 ```

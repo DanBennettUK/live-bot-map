@@ -8,7 +8,6 @@ Never reads or writes message text, prompts, URLs, command args, emails or secre
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -21,18 +20,52 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
 # Keep logs timely when launched under nohup
 try:
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
 except Exception:
     pass
-AGENTS_DIR = Path("/home/box/agent-data/agents")
-DELETED_PATH = Path("/home/box/agent-data/deleted-agents.json")
-DB_PATH = Path("/home/box/agent-data/search-index.db")
+
+
+def _apply_env_file(path: Path) -> None:
+    """Load KEY=VALUE lines into os.environ without overriding existing values."""
+    if not path.is_file():
+        return
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+def _path_from_env(name: str, default: Path | None = None) -> Path | None:
+    raw = (os.environ.get(name) or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return default
+
+
+_SCRIPT_ROOT = Path(__file__).resolve().parent.parent
+_apply_env_file(_path_from_env("LBM_ENV_FILE") or (_SCRIPT_ROOT / ".secrets" / "refresher.env"))
+
+ROOT = (_path_from_env("LBM_ROOT") or _SCRIPT_ROOT).resolve()
+AGENTS_DIR = _path_from_env("LBM_AGENTS_DIR")
+DB_PATH = _path_from_env("LBM_INDEX_DB")
+DELETED_PATH = _path_from_env("LBM_DELETED_AGENTS")
+if DELETED_PATH is None and AGENTS_DIR is not None:
+    DELETED_PATH = AGENTS_DIR.parent / "deleted-agents.json"
 CLUSTERS_PATH = ROOT / "clusters.json"
 SECRETS_PATH = ROOT / ".secrets" / "blob-token"
+BANNED_TERMS_PATH = _path_from_env("LBM_BANNED_TERMS_FILE") or (ROOT / ".secrets" / "banned-terms.txt")
 STATE_PATH = ROOT / "logs" / "refresh-state.json"
 LOCAL_STATUS_PATH = ROOT / "logs" / "status.json"
 CONFIG_PATH = ROOT / "config.js"
@@ -75,13 +108,33 @@ CLUSTER_FALLBACK_COLOR = {
 }
 
 def _banned_terms() -> list[str]:
-    # Packed so the public tree does not contain these words in plaintext.
-    packed = "S1JBRlRPTnxQVUJHfFBVQkcgV0VTVHxIRVJNRVN8RUVWRUV8YW1zLXdlc3Rob3N0"
-    return base64.b64decode(packed).decode("ascii").split("|")
+    """Load optional extra strip-terms from a local file and/or LBM_BANNED_TERMS."""
+    terms: list[str] = []
+    path = BANNED_TERMS_PATH
+    if path is not None and path.is_file():
+        try:
+            for line in path.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    terms.append(line)
+        except OSError:
+            pass
+    raw = (os.environ.get("LBM_BANNED_TERMS") or "").strip()
+    if raw:
+        terms.extend(part.strip() for part in raw.split(",") if part.strip())
+    # Longer phrases first, unique case-insensitive
+    seen: set[str] = set()
+    unique: list[str] = []
+    for term in sorted(terms, key=len, reverse=True):
+        key = term.casefold()
+        if key not in seen:
+            seen.add(key)
+            unique.append(term)
+    return unique
 
 
 def sanitise_public_text(text: str) -> str:
-    """Strip private names, hosts, URLs, emails and ids from public strings."""
+    """Strip URLs, emails, ids, and any locally configured blocklist terms."""
     text = text or ""
     text = MD_LINK_RE.sub(r"\1", text)
     text = URL_RE.sub("", text)
@@ -94,11 +147,7 @@ def sanitise_public_text(text: str) -> str:
     )
     text = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "", text)
     text = re.sub(r"\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b", "", text, flags=re.I)
-    terms = _banned_terms()
-    org = terms[0]
-    text = re.sub(rf"\b{re.escape(org)}\s+work\b", "work", text, flags=re.I)
-    text = re.sub(rf"\b{re.escape(org)}\b", "work", text, flags=re.I)
-    for term in terms[1:]:
+    for term in _banned_terms():
         text = re.sub(rf"\s*\(\s*{re.escape(term)}\s*\)", "", text, flags=re.I)
         text = re.sub(rf"\b{re.escape(term)}\b", "", text, flags=re.I)
     text = re.sub(r"\(\s*\)", "", text)
@@ -149,7 +198,7 @@ def unique_slug(name: str, used: set[str]) -> str:
 
 
 def load_deleted_ids() -> set[str]:
-    if not DELETED_PATH.exists():
+    if DELETED_PATH is None or not DELETED_PATH.exists():
         return set()
     try:
         data = json.loads(DELETED_PATH.read_text())
@@ -199,7 +248,7 @@ def match_bot(name: str, clusters: list[dict]) -> tuple[dict, dict | None]:
 
 def load_profiles(deleted: set[str]) -> list[dict]:
     bots = []
-    if not AGENTS_DIR.exists():
+    if AGENTS_DIR is None or not AGENTS_DIR.exists():
         return bots
     for path in sorted(AGENTS_DIR.iterdir()):
         if not path.is_dir():
@@ -234,7 +283,7 @@ def load_activity(agent_ids: list[str]) -> dict[str, dict]:
         aid: {"last_ms": None, "last_role": None, "last_main": None, "events24h": 0, "recent": []}
         for aid in agent_ids
     }
-    if not DB_PATH.exists() or not agent_ids:
+    if DB_PATH is None or not DB_PATH.exists() or not agent_ids:
         return empty
     uri = f"file:{DB_PATH}?mode=ro"
     try:

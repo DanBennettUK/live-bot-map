@@ -1,6 +1,18 @@
 #!/bin/bash
 set -euo pipefail
-DIR=/workspace/live-bot-map
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+REPO_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+
+ENV_FILE="${LBM_ENV_FILE:-$REPO_DIR/.secrets/refresher.env}"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+DIR="${LBM_ROOT:-$REPO_DIR}"
 mkdir -p "$DIR/logs"
 if [ -f "$DIR/logs/refresher.pid" ]; then
   old=$(cat "$DIR/logs/refresher.pid" || true)
