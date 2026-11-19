@@ -153,7 +153,11 @@ body[data-view="list"] { overflow: auto; }
 }
 
 .stage {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: calc(var(--header-h) + var(--filters-h));
+  left: 0;
+  right: 0;
+  bottom: var(--ticker-h);
   z-index: 2;
 }
 #map {
@@ -175,6 +179,10 @@ body[data-view="list"] { overflow: auto; }
 #map .bot-label {
   font-family: var(--font); font-size: 12px; font-weight: 500;
   fill: var(--ink); text-anchor: middle;
+}
+#map .bot-title {
+  font-family: var(--font); font-size: 9px; font-weight: 500;
+  fill: #9aa3b5; text-anchor: middle;
 }
 #map .bot-sub {
   font-family: var(--mono); font-size: 9px; fill: var(--muted); text-anchor: middle;
@@ -289,6 +297,9 @@ body[data-view="list"] { overflow: auto; }
 .card.is-hidden { display: none; }
 .card.is-dim { opacity: 0.55; }
 .card h2 { margin: 0 0 2px; font-size: 17px; }
+.card .bot-title, .detail .bot-title {
+  margin: 0 0 8px; color: #9aa3b5; font-size: 13px; font-weight: 500;
+}
 .card .cluster-line {
   font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
@@ -302,7 +313,13 @@ body[data-view="list"] { overflow: auto; }
 .card.is-idle .doing { color: var(--muted); }
 .card.is-pulse { box-shadow: 0 0 0 1px color-mix(in srgb, var(--swatch) 50%, transparent), 0 0 24px color-mix(in srgb, var(--swatch) 22%, transparent); }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .brand { min-width: 200px; }
+  .stats { gap: 12px; }
+  .search input { width: 150px; }
+  .top { gap: 12px; padding: 10px 14px 8px; }
+}
+@media (max-width: 700px) {
   body[data-view="map"] { overflow: hidden; }
   .top { flex-wrap: wrap; gap: 8px; padding: 10px 12px 8px; }
   .brand { min-width: 0; }
@@ -312,13 +329,6 @@ body[data-view="list"] { overflow: auto; }
   .search input { width: 150px; }
   :root { --header-h: 168px; --filters-h: 52px; }
   .filters { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; }
-  body[data-view="map"] .stage {
-    inset: auto;
-    top: calc(var(--header-h) + var(--filters-h));
-    left: 0;
-    right: 0;
-    bottom: var(--ticker-h);
-  }
   .detail {
     left: 12px; right: 12px; width: auto;
     bottom: calc(var(--ticker-h) + 10px);

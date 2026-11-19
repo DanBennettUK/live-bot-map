@@ -201,6 +201,21 @@ def name_slug(name: str) -> str:
     return slug or "bot"
 
 
+def title_from_name(name: str) -> str:
+    parts = [part.strip() for part in (name or "").split("·", 1)]
+    if len(parts) == 2 and parts[1]:
+        return parts[1]
+    return ""
+
+
+def resolve_title(name: str, slot: dict | None) -> str:
+    """Prefer a clusters.json override, else the profile name after ' · '."""
+    override = sanitise_public_text((slot or {}).get("title") or "")
+    if override:
+        return override
+    return sanitise_public_text(title_from_name(name))
+
+
 def unique_slug(name: str, used: set[str]) -> str:
     base = name_slug(name)
     slug = base
@@ -236,6 +251,8 @@ def load_clusters() -> list[dict]:
         for slot in cluster.get("bots", []):
             if slot.get("role"):
                 slot["role"] = sanitise_public_text(slot["role"])
+            if slot.get("title"):
+                slot["title"] = sanitise_public_text(slot["title"])
     return clusters
 
 
@@ -484,6 +501,7 @@ def attach_work_fleet_bots(
             "name": display,
             "cluster": work["name"],
             "clusterId": work["id"],
+            "title": resolve_title(display, slot),
             "role": role,
             "color": resolve_avatar_color(slot.get("color"), work["id"]),
             "lastActive": last_iso,
@@ -555,6 +573,7 @@ def build_status() -> dict:
             "name": profile["name"],
             "cluster": cluster["name"],
             "clusterId": cluster["id"],
+            "title": resolve_title(profile["name"], slot),
             "role": override or profile["role"],
             "color": resolve_avatar_color(profile.get("avatarColor"), cluster["id"]),
             "lastActive": iso(from_ms(act["last_ms"])) if act["last_ms"] else None,

@@ -93,18 +93,122 @@
     return Math.min(16, 7.5 + Math.log1p(events || 0) * 1.35);
   }
 
-  function clusterLabelPoint(cluster, bots) {
-    if (!bots.length) return { x: cluster.hub.x, y: cluster.hub.y - 32 };
-    let minX = cluster.hub.x;
-    let maxX = cluster.hub.x;
-    let minY = cluster.hub.y - 24;
-    for (const bot of bots) {
-      const reach = nodeRadius(bot.events24h) * 2.25 + 10;
-      minX = Math.min(minX, bot.x);
-      maxX = Math.max(maxX, bot.x);
-      minY = Math.min(minY, bot.y - reach);
+  function botTitle(bot) {
+    return String((bot && bot.title) || "").trim();
+  }
+
+  function captionLines(bot) {
+    const title = botTitle(bot);
+    const doing = (bot.doingNow || "").trim();
+    if (title && doing) {
+      const merged = `${title} · ${doing}`;
+      if (merged.length <= 26) return [merged];
+      return [title, doing];
     }
-    return { x: (minX + maxX) / 2, y: minY - 8 };
+    return [title || doing].filter(Boolean);
+  }
+
+  function textWidth(text, px, tracking = 0) {
+    const n = String(text || "").length;
+    if (!n) return 0;
+    return n * px * 0.62 + Math.max(0, n - 1) * tracking;
+  }
+
+  function rectsOverlap(a, b, pad = 4) {
+    return a.x - a.w / 2 - pad < b.x + b.w / 2
+      && a.x + a.w / 2 + pad > b.x - b.w / 2
+      && a.y - a.h / 2 - pad < b.y + b.h / 2
+      && a.y + a.h / 2 + pad > b.y - b.h / 2;
+  }
+
+  function hitsCircle(rect, cx, cy, r, pad = 6) {
+    const dx = Math.max(Math.abs(cx - rect.x) - rect.w / 2, 0);
+    const dy = Math.max(Math.abs(cy - rect.y) - rect.h / 2, 0);
+    return dx * dx + dy * dy < (r + pad) * (r + pad);
+  }
+
+  function botObstacles(bot) {
+    const r = nodeRadius(bot.events24h);
+    const name = shortName(bot.name);
+    const lines = captionLines(bot);
+    const nameY = bot.y + r + 14;
+    const boxes = [
+      { kind: "circle", x: bot.x, y: bot.y, r: Math.max(r * 2.1, 22) },
+      { kind: "rect", x: bot.x, y: nameY, w: textWidth(name, 12) + 8, h: 14 },
+    ];
+    lines.forEach((line, i) => {
+      boxes.push({
+        kind: "rect",
+        x: bot.x,
+        y: bot.y + r + 26 + i * 11,
+        w: textWidth(line, 9) + 8,
+        h: 11,
+      });
+    });
+    return boxes;
+  }
+
+  function clusterLabelRect(text, x, y, anchor) {
+    const w = textWidth(text.toUpperCase(), 10, 1.6) + 10;
+    const h = 12;
+    const cx = anchor === "start" ? x + w / 2 : anchor === "end" ? x - w / 2 : x;
+    return { kind: "rect", x: cx, y, w, h };
+  }
+
+  function clusterBox(cluster, bots) {
+    let minX = cluster.hub.x - 24;
+    let maxX = cluster.hub.x + 24;
+    let minY = cluster.hub.y - 24;
+    let maxY = cluster.hub.y + 24;
+    for (const bot of bots) {
+      const r = nodeRadius(bot.events24h);
+      const reach = Math.max(r * 2.1, 22);
+      const lines = captionLines(bot);
+      minX = Math.min(minX, bot.x - reach);
+      maxX = Math.max(maxX, bot.x + reach);
+      minY = Math.min(minY, bot.y - reach);
+      maxY = Math.max(maxY, bot.y + r + 26 + lines.length * 11);
+    }
+    return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+  }
+
+  function clusterLabelPlacement(cluster, bots, obstacles) {
+    const name = cluster.name || "";
+    if (!bots.length) {
+      return { x: cluster.hub.x, y: cluster.hub.y - 32, anchor: "middle" };
+    }
+    const box = clusterBox(cluster, bots);
+    const others = obstacles;
+    const candidates = [
+      { x: box.cx, y: box.minY - 18, anchor: "middle", prefer: 0 },
+      { x: box.maxX + 16, y: box.cy, anchor: "start", prefer: 1 },
+      { x: box.minX - 16, y: box.cy, anchor: "end", prefer: 1 },
+      { x: box.cx, y: Math.min(788, box.maxY + 16), anchor: "middle", prefer: 2 },
+      { x: box.maxX + 14, y: box.minY, anchor: "start", prefer: 2 },
+      { x: box.minX - 14, y: box.minY, anchor: "end", prefer: 2 },
+      { x: box.maxX + 14, y: box.maxY, anchor: "start", prefer: 3 },
+      { x: box.minX - 14, y: box.maxY, anchor: "end", prefer: 3 },
+      { x: cluster.hub.x + 36, y: cluster.hub.y - 6, anchor: "start", prefer: 3 },
+      { x: cluster.hub.x - 36, y: cluster.hub.y - 6, anchor: "end", prefer: 3 },
+    ];
+    let best = null;
+    for (const cand of candidates) {
+      const rect = clusterLabelRect(name, cand.x, cand.y, cand.anchor);
+      if (rect.x - rect.w / 2 < 16 || rect.x + rect.w / 2 > 1264 || rect.y < 14 || rect.y > 788) {
+        cand.score = 1000 + cand.prefer;
+        continue;
+      }
+      let hits = 0;
+      for (const obs of others) {
+        if (obs.kind === "circle" && hitsCircle(rect, obs.x, obs.y, obs.r, 2)) hits += 3;
+        else if (obs.kind === "rect" && rectsOverlap(rect, obs, 5)) hits += obs.label ? 4 : 2;
+      }
+      cand.score = hits * 20 + cand.prefer;
+      cand.rect = rect;
+      if (!best || cand.score < best.score) best = cand;
+    }
+    const pick = best || candidates[0];
+    return { x: pick.x, y: pick.y, anchor: pick.anchor, rect: pick.rect || clusterLabelRect(name, pick.x, pick.y, pick.anchor) };
   }
 
   function activityClass(bot, now = Date.now()) {
@@ -120,7 +224,7 @@
     const inCluster = state.cluster === "all" || bot.clusterId === state.cluster;
     if (!inCluster) return false;
     if (!q) return true;
-    const hay = `${bot.name} ${bot.role} ${bot.cluster} ${bot.doingNow}`.toLowerCase();
+    const hay = `${bot.name} ${bot.title || ""} ${bot.role} ${bot.cluster} ${bot.doingNow}`.toLowerCase();
     return hay.includes(q);
   }
 
@@ -229,15 +333,29 @@
         cx: cluster.hub.x, cy: cluster.hub.y, r: 22,
         stroke: cluster.color,
       }));
-      const labelAt = clusterLabelPoint(cluster, bots);
+      world.appendChild(group);
+    }
+
+    const obstacles = [];
+    for (const bot of feed.bots) {
+      for (const box of botObstacles(bot)) obstacles.push({ ...box, bot });
+    }
+    for (const cluster of feed.clusters) {
+      obstacles.push({ kind: "circle", x: cluster.hub.x, y: cluster.hub.y, r: 24 });
+    }
+    for (const cluster of feed.clusters) {
+      const group = [...world.querySelectorAll(".cluster")].find((g) => g.getAttribute("data-cluster") === cluster.id);
+      const bots = feed.bots.filter((b) => b.clusterId === cluster.id);
+      const labelAt = clusterLabelPlacement(cluster, bots, obstacles);
       const label = svgEl("text", {
         class: "cluster-label",
         x: labelAt.x, y: labelAt.y,
-        "text-anchor": "middle",
+        "text-anchor": labelAt.anchor || "middle",
       });
       label.textContent = cluster.name;
-      group.appendChild(label);
-      world.appendChild(group);
+      if (group) group.appendChild(label);
+      else world.appendChild(label);
+      if (labelAt.rect) obstacles.push({ ...labelAt.rect, label: true });
     }
 
     for (const bot of feed.bots) {
@@ -249,7 +367,7 @@
         "data-id": bot.id,
         tabindex: "0",
         role: "button",
-        "aria-label": bot.name,
+        "aria-label": botTitle(bot) ? `${shortName(bot.name)}, ${botTitle(bot)}` : shortName(bot.name),
       });
       if (!matches(bot)) g.classList.add("is-hidden");
       if (state.selectedId === bot.id) g.classList.add("is-focus");
@@ -278,12 +396,20 @@
         cx: bot.x, cy: bot.y, r: Math.max(3, r * 0.28),
         fill: color,
       }));
-      const name = svgEl("text", { class: "bot-label", x: bot.x, y: bot.y + r + 16 });
+      const name = svgEl("text", { class: "bot-label", x: bot.x, y: bot.y + r + 14 });
       name.textContent = shortName(bot.name);
       g.appendChild(name);
-      const sub = svgEl("text", { class: "bot-sub", x: bot.x, y: bot.y + r + 28 });
-      sub.textContent = bot.doingNow;
-      g.appendChild(sub);
+      const lines = captionLines(bot);
+      lines.forEach((line, i) => {
+        const isDoing = !botTitle(bot) || (lines.length > 1 && i === lines.length - 1);
+        const sub = svgEl("text", {
+          class: isDoing ? "bot-sub" : "bot-title",
+          x: bot.x,
+          y: bot.y + r + 26 + i * 11,
+        });
+        sub.textContent = line;
+        g.appendChild(sub);
+      });
       g.appendChild(svgEl("circle", { class: "node-hit", cx: bot.x, cy: bot.y, r: Math.max(22, r + 14) }));
 
       const activate = (ev) => {
@@ -335,7 +461,8 @@
     detail.style.setProperty("--swatch", color);
     detail.innerHTML = `
       <button class="close" type="button" aria-label="Close">×</button>
-      <h2>${escapeHtml(bot.name)}</h2>
+      <h2>${escapeHtml(shortName(bot.name))}</h2>
+      ${botTitle(bot) ? `<div class="bot-title">${escapeHtml(botTitle(bot))}</div>` : ""}
       <div class="cluster-line">${escapeHtml(bot.cluster)}</div>
       <p class="role">${escapeHtml(bot.role)}</p>
       <dl>
@@ -375,7 +502,8 @@
       if (!matches(bot)) card.classList.add("is-hidden");
       card.innerHTML = `
         <div class="cluster-line">${escapeHtml(bot.cluster)}</div>
-        <h2>${escapeHtml(bot.name)}</h2>
+        <h2>${escapeHtml(shortName(bot.name))}</h2>
+        ${botTitle(bot) ? `<p class="bot-title">${escapeHtml(botTitle(bot))}</p>` : ""}
         <p class="role">${escapeHtml(bot.role)}</p>
         <div class="meta">
           <span class="doing">${escapeHtml(bot.doingNow)}</span>
