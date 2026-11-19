@@ -89,7 +89,8 @@
   }
 
   function nodeRadius(events) {
-    return Math.min(28, 11 + Math.log1p(events || 0) * 3.6);
+    // Log scale with a modest cap so one busy bot cannot dominate the map.
+    return Math.min(16, 7.5 + Math.log1p(events || 0) * 1.35);
   }
 
   function clusterLabelPoint(cluster, bots) {

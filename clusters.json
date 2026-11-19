@@ -6,13 +6,13 @@
       "color": "#f3a05a",
       "hub": {
         "x": 640,
-        "y": 500
+        "y": 605
       },
       "bots": [
         {
           "match": "Mew",
           "x": 640,
-          "y": 520
+          "y": 625
         }
       ]
     },
@@ -21,25 +21,25 @@
       "name": "Building and fleet care",
       "color": "#5cc8ff",
       "hub": {
-        "x": 220,
-        "y": 285
+        "x": 155,
+        "y": 400
       },
       "bots": [
         {
           "match": "Machamp",
-          "x": 128,
-          "y": 235
+          "x": 80,
+          "y": 330
         },
         {
           "match": "Exeggutor",
-          "x": 322,
-          "y": 220,
+          "x": 250,
+          "y": 310,
           "role": "Exeggutor designs Dan Bennett's bots and looks after the fleet."
         },
         {
           "match": "tinkabot",
-          "x": 248,
-          "y": 360
+          "x": 150,
+          "y": 500
         }
       ]
     },
@@ -49,61 +49,61 @@
       "color": "#b892ff",
       "hub": {
         "x": 640,
-        "y": 230
+        "y": 360
       },
       "bots": [
         {
           "match": "Ditto",
           "x": 640,
-          "y": 330,
+          "y": 485,
           "role": "Ditto is Dan Bennett's work helper."
         },
         {
           "match": "Eevee",
-          "x": 509,
-          "y": 301,
+          "x": 460,
+          "y": 448,
           "role": "Eevee is Dan's work chief of staff.",
           "color": "orange"
         },
         {
           "match": "Umbreon",
-          "x": 455,
-          "y": 230,
+          "x": 385,
+          "y": 360,
           "role": "Umbreon handles Dan's work community reports and safety cases.",
           "color": "yellow"
         },
         {
           "match": "Glaceon",
-          "x": 509,
-          "y": 159,
+          "x": 460,
+          "y": 272,
           "role": "Glaceon builds Dan's work reporting across campaigns.",
           "color": "cyan"
         },
         {
           "match": "Sylveon",
           "x": 640,
-          "y": 130,
+          "y": 235,
           "role": "Sylveon runs Dan's work campaigns.",
           "color": "pink"
         },
         {
           "match": "Espeon",
-          "x": 771,
-          "y": 159,
+          "x": 820,
+          "y": 272,
           "role": "Espeon does Dan's work planning and strategy.",
           "color": "violet"
         },
         {
           "match": "Leafeon",
-          "x": 825,
-          "y": 230,
+          "x": 895,
+          "y": 360,
           "role": "Leafeon keeps Dan's work knowledge and documentation in order.",
           "color": "green"
         },
         {
           "match": "Smeargle",
-          "x": 771,
-          "y": 301,
+          "x": 820,
+          "y": 448,
           "role": "Smeargle designs and builds Dan's work tools.",
           "color": "teal"
         }
@@ -114,19 +114,19 @@
       "name": "Money",
       "color": "#f4d35e",
       "hub": {
-        "x": 250,
-        "y": 620
+        "x": 200,
+        "y": 680
       },
       "bots": [
         {
           "match": "Meowth",
-          "x": 150,
-          "y": 595
+          "x": 100,
+          "y": 655
         },
         {
           "match": "Chansey",
-          "x": 350,
-          "y": 660
+          "x": 300,
+          "y": 715
         }
       ]
     },
@@ -136,13 +136,13 @@
       "color": "#7ed0b6",
       "hub": {
         "x": 640,
-        "y": 655
+        "y": 715
       },
       "bots": [
         {
           "match": "Noctowl",
           "x": 640,
-          "y": 675
+          "y": 730
         }
       ]
     },
@@ -151,19 +151,19 @@
       "name": "Social and streaming",
       "color": "#ff7ad9",
       "hub": {
-        "x": 1060,
-        "y": 285
+        "x": 1125,
+        "y": 400
       },
       "bots": [
         {
           "match": "Jigglypuff",
-          "x": 968,
-          "y": 235
+          "x": 1030,
+          "y": 310
         },
         {
           "match": "Pikachu",
-          "x": 1150,
-          "y": 335
+          "x": 1180,
+          "y": 490
         }
       ]
     },
@@ -172,14 +172,14 @@
       "name": "Map itself",
       "color": "#7af0c8",
       "hub": {
-        "x": 1060,
-        "y": 620
+        "x": 1100,
+        "y": 680
       },
       "bots": [
         {
           "match": "Live Bot Map",
-          "x": 1060,
-          "y": 640
+          "x": 1100,
+          "y": 700
         }
       ]
     },

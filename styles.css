@@ -304,14 +304,21 @@ body[data-view="list"] { overflow: auto; }
 
 @media (max-width: 900px) {
   body[data-view="map"] { overflow: hidden; }
-  .top { flex-wrap: wrap; gap: 8px; padding: 10px 12px 4px; }
+  .top { flex-wrap: wrap; gap: 8px; padding: 10px 12px 8px; }
   .brand { min-width: 0; }
-  .stats { order: 3; width: 100%; justify-content: space-between; gap: 8px; padding: 4px 0 0; }
+  .stats { order: 3; width: 100%; justify-content: space-between; gap: 8px; padding: 6px 0 0; }
   .stats dd { font-size: 15px; }
   .controls { margin-left: auto; }
   .search input { width: 150px; }
-  :root { --header-h: 118px; --filters-h: 72px; }
+  :root { --header-h: 168px; --filters-h: 52px; }
   .filters { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; }
+  body[data-view="map"] .stage {
+    inset: auto;
+    top: calc(var(--header-h) + var(--filters-h));
+    left: 0;
+    right: 0;
+    bottom: var(--ticker-h);
+  }
   .detail {
     left: 12px; right: 12px; width: auto;
     bottom: calc(var(--ticker-h) + 10px);
