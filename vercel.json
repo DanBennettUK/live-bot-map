@@ -7,5 +7,17 @@
         { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://live-bot-map.dan-5bd.workers.dev/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "destination": "https://live-bot-map.dan-5bd.workers.dev/:path*",
+      "permanent": true
+    }
   ]
 }

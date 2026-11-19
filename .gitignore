@@ -12,3 +12,6 @@ screenshot-840x520.png
 screenshot-dan.png
 .wrangler/
 node_modules/
+public/
+screenshot-cf.png
+screenshot-cf-840.png

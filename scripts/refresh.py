@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate status.json from bot profiles + message timestamps, and publish it to Vercel Blob and, when configured, Cloudflare Workers.
+"""Generate status.json from bot profiles + message timestamps, and publish it to Cloudflare Workers.
 
 Reads ONLY message timestamps, role, in_main_chat, and agent_id from the search index.
 Never reads or writes message text, prompts, URLs, command args, emails or secrets.
@@ -76,7 +76,7 @@ IDLE_AFTER_SEC = 10 * 60
 PULSE_SEC = 10 * 60
 GLOW_SEC = 24 * 60 * 60
 FORCE_PUBLISH_SEC = 10 * 60
-LOOP_SEC = 90
+LOOP_SEC = 120
 TICKER_LIMIT = 30
 WORK_CACHE_SEC = 5 * 60
 WORK_SSH_TIMEOUT = 12
@@ -775,14 +775,9 @@ def publish(payload: dict, force: bool = False) -> dict:
             last_pub_ts = 0
     age = time.time() - last_pub_ts
     changed = digest != last_hash
-    cf_ready = bool(read_cf_token() and cf_status_url())
-    should = (
-        force
-        or changed
-        or age >= FORCE_PUBLISH_SEC
-        or not state.get("feedUrl")
-        or (cf_ready and not state.get("cfPublished"))
-    )
+    # Skip unchanged payloads, including on restart, unless the last
+    # successful Worker publish is missing or older than 10 minutes.
+    should = force or changed or age >= FORCE_PUBLISH_SEC or not state.get("cfPublished")
 
     LOCAL_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     LOCAL_STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
@@ -791,62 +786,28 @@ def publish(payload: dict, force: bool = False) -> dict:
         print(f"unchanged, skipping upload ({int(age)}s since last publish)")
         return state
 
-    blob_token = read_token()
     cf_token = read_cf_token()
     cf_url = cf_status_url()
-    if not blob_token and not (cf_token and cf_url):
-        print("no publish target yet; wrote local status only", file=sys.stderr)
+    if not (cf_token and cf_url):
+        print("no Cloudflare publish target yet; wrote local status only", file=sys.stderr)
         state.update({"hash": digest, "generatedAt": payload["generatedAt"], "skippedReason": "no-token"})
         save_state(state)
         return state
 
-    errors: list[str] = []
-    feed_url = state.get("feedUrl")
-    blob_ok = False
-    if blob_token:
-        try:
-            feed_url = upload_blob(payload, blob_token)
-            write_config(feed_url)
-            blob_ok = True
-        except Exception as exc:
-            errors.append(f"blob: {exc}")
-            print(f"blob upload failed: {exc}", file=sys.stderr)
-
-    cf_ok = False
-    if cf_token and cf_url:
-        try:
-            upload_cloudflare(payload, cf_token, cf_url)
-            cf_ok = True
-        except Exception as exc:
-            errors.append(f"cloudflare: {exc}")
-            print(f"cloudflare upload failed: {exc}", file=sys.stderr)
-
-    if not blob_ok and not cf_ok:
-        raise RuntimeError("; ".join(errors) or "publish failed")
-
+    upload_cloudflare(payload, cf_token, cf_url)
     state = {
         "hash": digest,
         "publishedAt": payload["generatedAt"],
         "generatedAt": payload["generatedAt"],
-        "feedUrl": feed_url,
-        "cfUrl": cf_url if cf_ok else state.get("cfUrl"),
-        "cfPublished": cf_ok,
+        "cfUrl": cf_url,
+        "cfPublished": True,
         "bots": len(payload["bots"]),
         "clusters": len(payload["clusters"]),
         "forced": (not changed) and age >= FORCE_PUBLISH_SEC,
     }
-    if errors:
-        state["publishErrors"] = errors
     save_state(state)
     kind = "forced refresh" if state["forced"] else ("first publish" if last_hash is None else "updated")
-    dests = []
-    if feed_url:
-        dests.append(feed_url)
-    if cf_ok and cf_url:
-        dests.append(cf_url)
-    print(f"{kind}: {len(payload['bots'])} bots, {len(payload['clusters'])} clusters, {' + '.join(dests)}")
-    if errors:
-        print("partial publish: " + "; ".join(errors), file=sys.stderr)
+    print(f"{kind}: {len(payload['bots'])} bots, {len(payload['clusters'])} clusters, {cf_url}")
     return state
 
 
@@ -865,7 +826,7 @@ def loop() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build and publish the live bot map feed")
-    parser.add_argument("--loop", action="store_true", help="Refresh every 90 seconds")
+    parser.add_argument("--loop", action="store_true", help="Refresh every 120 seconds")
     parser.add_argument("--force", action="store_true", help="Upload even if unchanged")
     parser.add_argument("--once", action="store_true", help="Generate (and upload if possible) once")
     args = parser.parse_args()

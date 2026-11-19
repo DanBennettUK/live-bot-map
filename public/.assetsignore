@@ -1,8 +1,0 @@
-.assetsignore
-*
-!index.html
-!list.html
-!app.js
-!styles.css
-!config.js
-!robots.txt

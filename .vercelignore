@@ -4,6 +4,8 @@ scripts
 README.md
 clusters.json
 screenshot.png
+screenshot-cf.png
+screenshot-cf-840.png
 .gitignore
 .vercel
 __pycache__
@@ -16,3 +18,9 @@ node_modules
 package.json
 package-lock.json
 public
+index.html
+list.html
+app.js
+styles.css
+config.js
+robots.txt
